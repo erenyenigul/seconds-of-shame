@@ -1,7 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <pthread.h>
-#include <time.h>
  /****************************************************************************** 
   pthread_sleep takes an integer number of seconds to pause the current thread 
   original by Yingwu Zhu
