@@ -39,6 +39,7 @@ typedef struct
 bool roll_dice(float win_probability);
 int validate_program_parameters(int parameter_count, char **parameter_list);
 void tprintf(char *format, ...);
+int uniform_random(int upper_bound);
 
 void commentator_main(void *id_);
 void commentator_round(void *id_);
@@ -48,6 +49,7 @@ void moderator_round();
 void queue_init();
 int queue_push(int i);
 int queue_pop();
+int queue_size();
 
 void event_init(event_t **event_ptr);
 void wait_event(event_t *event);
@@ -58,7 +60,6 @@ void broadcast_event(event_t *event);
 queue_t *queue;
 
 //Global events
-event_t *all_ready;
 event_t *all_decided;
 event_t *question_asked;
 event_t *commentator_done;
@@ -84,7 +85,6 @@ int main(int argc, char *argv[])
 
 	queue_init();
 
-	event_init(&all_ready);
 	event_init(&all_decided);
 	event_init(&question_asked);
 	event_init(&commentator_done);
@@ -111,19 +111,16 @@ void commentator_round(void *id_)
 	
 	pthread_mutex_lock(&ready_lock);
 	num_ready++;
-	if(num_ready>=N){
-		pthread_mutex_unlock(&ready_lock);
-		signal_event(all_ready);
-	}else{
-		pthread_mutex_unlock(&ready_lock);
-	}
-		
+	pthread_mutex_unlock(&ready_lock);
+
 	wait_event(question_asked);
+		
 	bool will_answer = roll_dice(P);
 	
 	if(will_answer){
 		//queue_push() operation is secured with lock. The lock is implemented in the function
-	 	queue_push(id);
+		//queue_push also prints that commentator generates an answer
+		queue_push(id);
 	}
 	
 	pthread_mutex_lock(&decided_lock);
@@ -138,7 +135,12 @@ void commentator_round(void *id_)
 
 	if(will_answer){
 		while(turn!=id);
-		tprintf("Commentator #%d speaks\n", id);
+
+		int sleep_amount = uniform_random(T);
+		tprintf(" Commentator #%d’s turn to speak for %d seconds\n", id, sleep_amount);
+		pthread_sleep(sleep_amount);
+		tprintf("Commentator #%d finished speaking\n", id);
+		
 		signal_event(commentator_done);
 	}
 
@@ -155,20 +157,19 @@ void moderator_round(int round_num)
 	wait_event(all_decided);
 
 	int commentator_id;
+	
 	while((commentator_id = queue_pop())!=-1){
 	 	pthread_mutex_lock(&turn_lock);
 		turn = commentator_id;
 		pthread_mutex_unlock(&turn_lock);
 
 		wait_event(commentator_done);
-		tprintf("Commentator #%d finished speaking\n", commentator_id);
 	}
 
 	num_decided = 0;
-	pthread_mutex_lock(&ready_lock);
 	num_ready = 0;
-	pthread_mutex_unlock(&ready_lock);
 	turn = -1;
+
 	tprintf("End of round %d\n", round_num);
 	broadcast_event(next_round);
 }
@@ -230,6 +231,10 @@ bool roll_dice(float win_probability)
 	return dice < win_probability;
 }
 
+int uniform_random(int upper_bound){
+	return (int) 1+(((int)rand())%(upper_bound));
+}
+
 void tprintf(char *format, ...)
 {
 	time_t s, val = 1;
@@ -249,7 +254,7 @@ void tprintf(char *format, ...)
 }
 
 //Queue Related Functions
-//push and pop uses mutex for synching the adding/removing process.
+//push, pop and size use mutex for synching the adding/removing process.
 
 void queue_init()
 {
@@ -277,8 +282,9 @@ int queue_push(int i)
 		queue->elems[(queue->in + queue->count) % max_s] = i;
 		queue->count++;
 
-		return_value = 1;
+		return_value = queue->count;
 	}
+	tprintf("Commentator #%d generates an answer. Position in queue %d\n", i, return_value-1);
 
 	pthread_mutex_unlock(&queue_lock);
 	return return_value;
@@ -301,6 +307,14 @@ int queue_pop()
 
 	pthread_mutex_unlock(&queue_lock);
 	return return_value;
+}
+
+int queue_size(){
+	int size = 0;
+	pthread_mutex_lock(&queue_lock);
+	size= queue->count;
+	pthread_mutex_unlock(&queue_lock);
+	return size;
 }
 
 //Event Related Functions
