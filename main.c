@@ -21,7 +21,6 @@ const int MAX_PARAMETER_SIZE = 5;
 // Index 4 - b parameter's value.
 int N, Q, T;
 float P, B;
-float program_settings[MAX_PARAMETER_SIZE];
 
 typedef struct
 {
@@ -41,7 +40,7 @@ bool roll_dice(float win_probability);
 int validate_program_parameters(int parameter_count, char **parameter_list);
 void tprintf(char *format, ...);
 
-void commentator_main(void *str);
+void commentator_main(void *id);
 void moderator_main(void *str);
 
 void queue_init();
@@ -65,8 +64,9 @@ event_t *next_round;
 //Global locks
 pthread_mutex_t decided_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
-
+pthread_mutex_t turn_lock = PTHREAD_MUTEX_INITIALIZER;
 int num_decided = 0;
+int turn = -1;
 
 int main(int argc, char *argv[])
 {
@@ -86,26 +86,57 @@ int main(int argc, char *argv[])
 
 	for (int i = 0; i < N; i++)
 	{
-		pthread_create(&commentators[i], NULL, &commentator_main, (void *)"hey");
+		pthread_create(&commentators[i], NULL, &commentator_main, (void *)i);
 	}
 	pthread_create(&moderator, NULL, &moderator_main, (void *)"hey");
 
 	pthread_exit(NULL);
+	
 }
 
 //Thread Related Functions
 
-void commentator_main(void *str)
+void commentator_main(void *id_)
 {
+	int id = (int) id_;
+
 	wait_event(question_asked);
-	tprintf("wow\n");
+	bool will_answer = roll_dice(P);
+
+	if(will_answer){
+		//queue_push() operation is secured with lock. The lock is implemented in the function
+	 	queue_push(id);
+	}
+
+	pthread_mutex_lock(&decided_lock);
+	num_decided++;
+	if(num_decided >= N)
+		signal_event(all_decided);
+	pthread_mutex_unlock(&decided_lock);
+
+	if(will_answer){
+		while(turn!=id);
+		tprintf("Commentator #%d speaks\n", id);
+		signal_event(commentator_done);
+	}
 }
 
 void moderator_main(void *str)
 {
-	all_decided = 0;
-	tprintf("Moderator\n");
+	num_decided = 0;
+	tprintf("Moderator asked the question %d\n", 1);
 	broadcast_event(question_asked);
+	wait_event(all_decided);
+
+	int commentator_id;
+	while((commentator_id = queue_pop())!=-1){
+	 	pthread_mutex_lock(&turn_lock);
+		turn = commentator_id;
+		pthread_mutex_unlock(&turn_lock);
+
+		wait_event(commentator_done);
+		tprintf("Commentator #%d finished speaking\n", commentator_id);
+	}
 }
 
 //Misc Functions
@@ -125,15 +156,15 @@ int validate_program_parameters(int parameter_count, char **parameter_list)
 	for (int i = 1; i < parameter_count; i += 2)
 	{
 		if (!strcmp(parameter_list[i], "-n"))
-			program_settings[0] = N = atof(parameter_list[i + 1]);
+			N = atof(parameter_list[i + 1]);
 		else if (!strcmp(parameter_list[i], "-p"))
-			program_settings[1] = P = atof(parameter_list[i + 1]);
+			P = atof(parameter_list[i + 1]);
 		else if (!strcmp(parameter_list[i], "-q"))
-			program_settings[2] = Q = atof(parameter_list[i + 1]);
+			Q = atof(parameter_list[i + 1]);
 		else if (!strcmp(parameter_list[i], "-t"))
-			program_settings[3] = T = atof(parameter_list[i + 1]);
+			T = atof(parameter_list[i + 1]);
 		else if (!strcmp(parameter_list[i], "-b"))
-			program_settings[4] = B = atof(parameter_list[i + 1]);
+			B = atof(parameter_list[i + 1]);
 		else
 		{
 			printf("\nseconds-of-shame: Illegal parameter(s).\n\n");
@@ -148,7 +179,7 @@ int validate_program_parameters(int parameter_count, char **parameter_list)
 bool roll_dice(float win_probability)
 {
 	float dice = (float)rand() / RAND_MAX;
-	return dice <= win_probability;
+	return dice < win_probability;
 }
 
 void tprintf(char *format, ...)
@@ -211,7 +242,7 @@ int queue_pop()
 	int max_s = queue->max_s;
 	int return_value;
 
-	if (queue->count == 0)
+	if (queue->count <= 0)
 		return_value = -1;
 	else
 	{
