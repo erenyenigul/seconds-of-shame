@@ -1,0 +1,47 @@
+
+moderator:
+    all_decided = 0;
+
+    ask question
+    broadcast(asked);
+
+    wait(all_decided);
+    
+    while(queue is not empty){
+        i = queue_pop()
+
+        acquire(turn_lock);
+        turn = i;
+        dequire(turn_lock);
+
+        wait(contester_done_signal);
+    }
+
+    asked = false;
+    broadcast(next_round);
+
+
+contester:
+    wait(asked);
+
+    bool will_answer = roll_dice()
+    
+    if(will_answer){
+        acquire(queue_lock);
+        queue->push(i);
+        dequire(queue_lock);
+    }
+    
+    acquire(decided_lock);
+    decided++;
+    if(decided==N) signal(all_decided);
+    dequire(decided_lock);
+
+    if(will_answer){
+        while(turn!=i);
+
+        answer
+        signal(contestor_done_signal)
+    }
+    
+    wait(next_round);
