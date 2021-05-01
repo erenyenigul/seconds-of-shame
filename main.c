@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <semaphore.h>
 #include <unistd.h>
+#include <stdarg.h>
 
 // Setting max parameter size as a global variable.
 const int MAX_PARAMETER_SIZE = 5;
@@ -22,30 +23,35 @@ int N, Q, T;
 float P, B;
 float program_settings[MAX_PARAMETER_SIZE];
 
-typedef struct{
+typedef struct
+{
 	int *elems;
 	int in;
 	int count;
 	int max_s;
-}queue_t;
+} queue_t;
 
-typedef struct {
+typedef struct
+{
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;
-}event_t;
+} event_t;
 
+bool roll_dice(float win_probability);
 int validate_program_parameters(int parameter_count, char **parameter_list);
+void tprintf(char *format, ...);
+
 void commentator_main(void *str);
 void moderator_main(void *str);
-bool roll_dice(float win_probability);
+
 void queue_init();
 int queue_push(int i);
 int queue_pop();
-event_t *create_event();
+
+void event_init(event_t **event_ptr);
 void wait_event(event_t *event);
 void signal_event(event_t *event);
 void broadcast_event(event_t *event);
-
 
 //Global queue, initialized in main()
 queue_t *queue;
@@ -58,7 +64,7 @@ event_t *next_round;
 
 //Global locks
 pthread_mutex_t decided_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t queue_lock   = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int num_decided = 0;
 
@@ -70,6 +76,11 @@ int main(int argc, char *argv[])
 
 	queue_init();
 
+	event_init(&all_decided);
+	event_init(&question_asked);
+	event_init(&commentator_done);
+	event_init(&next_round);
+
 	pthread_t commentators[N];
 	pthread_t moderator;
 
@@ -79,25 +90,23 @@ int main(int argc, char *argv[])
 	}
 	pthread_create(&moderator, NULL, &moderator_main, (void *)"hey");
 
-
 	pthread_exit(NULL);
 }
-
 
 //Thread Related Functions
 
 void commentator_main(void *str)
 {
-	char *string = (char *)str;
-
-	bool will_speak = roll_dice(P);
+	wait_event(question_asked);
+	tprintf("wow\n");
 }
 
 void moderator_main(void *str)
-{	
-	printf("lol i am the mod");
+{
+	all_decided = 0;
+	tprintf("Moderator\n");
+	broadcast_event(question_asked);
 }
-
 
 //Misc Functions
 
@@ -142,32 +151,53 @@ bool roll_dice(float win_probability)
 	return dice <= win_probability;
 }
 
+void tprintf(char *format, ...)
+{
+	time_t s, val = 1;
+	struct tm *current_time;
+	s = time(NULL);
+	current_time = localtime(&s);
+
+	int len = strlen(format) + 11;
+	char time_added_format[len];
+	sprintf(time_added_format, "%02d:%02d:%02d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec);
+	strncat(time_added_format, format, len);
+
+	va_list args;
+	va_start(args, format);
+	vprintf(time_added_format, args);
+	va_end(args);
+}
 
 //Queue Related Functions
 //push and pop uses mutex for synching the adding/removing process.
 
-void queue_init(){
-	queue = (queue_t*) malloc(sizeof(queue_t));
-	queue->elems = (int*) malloc(sizeof(int) * N);
-	
+void queue_init()
+{
+	queue = (queue_t *)malloc(sizeof(queue_t));
+	queue->elems = (int *)malloc(sizeof(int) * N);
+
 	queue->max_s = N;
-	queue->in=0;
-	queue->count=0;
+	queue->in = 0;
+	queue->count = 0;
 }
 
-int queue_push(int i){
+int queue_push(int i)
+{
 	pthread_mutex_lock(&queue_lock);
 
 	int return_value;
 	int max_s = queue->max_s;
 
-	if(queue->count>=max_s){
+	if (queue->count >= max_s)
+	{
 		return_value = -1;
-	}else{
-		printf("i %d in: %d count: %d\n", i, queue->in, queue->count);
-		queue->elems[(queue->in + queue->count)%max_s] = i;
+	}
+	else
+	{
+		queue->elems[(queue->in + queue->count) % max_s] = i;
 		queue->count++;
-		
+
 		return_value = 1;
 	}
 
@@ -175,47 +205,52 @@ int queue_push(int i){
 	return return_value;
 }
 
-int queue_pop(){
+int queue_pop()
+{
 	pthread_mutex_lock(&queue_lock);
 	int max_s = queue->max_s;
 	int return_value;
 
-	if(queue->count==0) 
+	if (queue->count == 0)
 		return_value = -1;
-	else{
- 	   	return_value = queue->elems[queue->in%max_s];
+	else
+	{
+		return_value = queue->elems[queue->in % max_s];
 		queue->in++;
 		queue->count--;
 	}
-	
+
 	pthread_mutex_unlock(&queue_lock);
 	return return_value;
 }
 
-
 //Event Related Functions
 
-event_t *create_event(){
-	event_t *event = (event_t*) malloc(sizeof(event_t));
-	event->cond = (pthread_cond_t) PTHREAD_COND_INITIALIZER;
-	event->mutex = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
+void event_init(event_t **event_ptr)
+{
+	event_t *event = (event_t *)malloc(sizeof(event_t));
+	event->cond = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
+	event->mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
 
-	return event;
+	*event_ptr = event;
 }
 
-void wait_event(event_t *event){
+void wait_event(event_t *event)
+{
 	pthread_mutex_lock(&(event->mutex));
 	pthread_cond_wait(&(event->cond), &(event->mutex));
 	pthread_mutex_unlock(&(event->mutex));
 }
 
-void signal_event(event_t *event){
+void signal_event(event_t *event)
+{
 	pthread_mutex_lock(&(event->mutex));
 	pthread_cond_signal(&(event->cond));
 	pthread_mutex_unlock(&(event->mutex));
 }
 
-void broadcast_event(event_t *event){
+void broadcast_event(event_t *event)
+{
 	pthread_mutex_lock(&(event->mutex));
 	pthread_cond_broadcast(&(event->cond));
 	pthread_mutex_unlock(&(event->mutex));
