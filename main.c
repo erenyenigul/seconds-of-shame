@@ -40,8 +40,10 @@ bool roll_dice(float win_probability);
 int validate_program_parameters(int parameter_count, char **parameter_list);
 void tprintf(char *format, ...);
 
-void commentator_main(void *id);
-void moderator_main(void *str);
+void commentator_main(void *id_);
+void commentator_round(void *id_);
+void moderator_main();
+void moderator_round();
 
 void queue_init();
 int queue_push(int i);
@@ -56,6 +58,7 @@ void broadcast_event(event_t *event);
 queue_t *queue;
 
 //Global events
+event_t *all_ready;
 event_t *all_decided;
 event_t *question_asked;
 event_t *commentator_done;
@@ -65,8 +68,13 @@ event_t *next_round;
 pthread_mutex_t decided_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t turn_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t ready_lock = PTHREAD_MUTEX_INITIALIZER;
+
 int num_decided = 0;
+int num_ready = 0;
 int turn = -1;
+
+bool is_last_round = false;
 
 int main(int argc, char *argv[])
 {
@@ -76,6 +84,7 @@ int main(int argc, char *argv[])
 
 	queue_init();
 
+	event_init(&all_ready);
 	event_init(&all_decided);
 	event_init(&question_asked);
 	event_init(&commentator_done);
@@ -88,7 +97,7 @@ int main(int argc, char *argv[])
 	{
 		pthread_create(&commentators[i], NULL, &commentator_main, (void *)i);
 	}
-	pthread_create(&moderator, NULL, &moderator_main, (void *)"hey");
+	pthread_create(&moderator, NULL, &moderator_main, NULL);
 
 	pthread_exit(NULL);
 	
@@ -96,36 +105,53 @@ int main(int argc, char *argv[])
 
 //Thread Related Functions
 
-void commentator_main(void *id_)
+void commentator_round(void *id_)
 {
 	int id = (int) id_;
-
+	
+	pthread_mutex_lock(&ready_lock);
+	num_ready++;
+	if(num_ready>=N){
+		pthread_mutex_unlock(&ready_lock);
+		signal_event(all_ready);
+	}else{
+		pthread_mutex_unlock(&ready_lock);
+	}
+		
 	wait_event(question_asked);
 	bool will_answer = roll_dice(P);
-
+	
 	if(will_answer){
 		//queue_push() operation is secured with lock. The lock is implemented in the function
 	 	queue_push(id);
 	}
-
+	
 	pthread_mutex_lock(&decided_lock);
 	num_decided++;
-	if(num_decided >= N)
+	//printf("%d\n", num_decided);
+	if(num_decided >= N){
+		pthread_mutex_unlock(&decided_lock);
 		signal_event(all_decided);
-	pthread_mutex_unlock(&decided_lock);
+	}else{
+		pthread_mutex_unlock(&decided_lock);
+	}
 
 	if(will_answer){
 		while(turn!=id);
 		tprintf("Commentator #%d speaks\n", id);
 		signal_event(commentator_done);
 	}
+
+	wait_event(next_round);
 }
 
-void moderator_main(void *str)
-{
-	num_decided = 0;
-	tprintf("Moderator asked the question %d\n", 1);
+void moderator_round(int round_num)
+{	
+	while(num_ready<N);
+
+	tprintf("Moderator asked the question %d\n", round_num);
 	broadcast_event(question_asked);
+	
 	wait_event(all_decided);
 
 	int commentator_id;
@@ -137,6 +163,28 @@ void moderator_main(void *str)
 		wait_event(commentator_done);
 		tprintf("Commentator #%d finished speaking\n", commentator_id);
 	}
+
+	num_decided = 0;
+	pthread_mutex_lock(&ready_lock);
+	num_ready = 0;
+	pthread_mutex_unlock(&ready_lock);
+	turn = -1;
+	tprintf("End of round %d\n", round_num);
+	broadcast_event(next_round);
+}
+
+void moderator_main(){
+	for(int i=0;i<Q;i++){
+		moderator_round(i+1);
+		if(i+1==Q) 
+			is_last_round = true;
+	}
+	tprintf("End game");
+}
+
+void commentator_main(void *id_){
+	while(!is_last_round)
+		commentator_round(id_);
 }
 
 //Misc Functions
