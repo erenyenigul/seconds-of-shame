@@ -97,6 +97,7 @@ int main(int argc, char *argv[])
 	}
 	pthread_create(&moderator, NULL, &moderator_main, NULL);
 
+	// TODO Change this to join.
 	pthread_exit(NULL);
 	
 }
@@ -178,7 +179,7 @@ void moderator_main(){
 		if(i+1==Q) 
 			is_last_round = true;
 	}
-	tprintf("End game");
+	tprintf("End game\n");
 }
 
 void commentator_main(void *id_){
