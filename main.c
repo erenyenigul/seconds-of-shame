@@ -10,9 +10,6 @@
 #include <unistd.h>
 #include <stdarg.h>
 
-// Taken from https://stackoverflow.com/a/30106751 to prevent warnings while compiling.
-#define INT2VOIDP(i) (void*)(uintptr_t)(i)
-
 // Setting max parameter size as a global variable.
 const int MAX_PARAMETER_SIZE = 5;
 
@@ -96,7 +93,7 @@ int main(int argc, char *argv[])
 
 	for (int i = 0; i < N; i++)
 	{
-		pthread_create(&commentators[i], NULL, (void *) commentator_main, INT2VOIDP(i));
+		pthread_create(&commentators[i], NULL, (void *) commentator_main, (void *) i);
 	}
 	pthread_create(&moderator, NULL, (void *) moderator_main, NULL);
 
@@ -153,7 +150,7 @@ void moderator_round(int round_num)
 {	
 	while(num_ready<N);
 
-	tprintf("Moderator asked the question %d\n", round_num);
+	tprintf(" Moderator asked the question %d\n", round_num);
 	broadcast_event(question_asked);
 	
 	wait_event(all_decided);
@@ -172,7 +169,7 @@ void moderator_round(int round_num)
 	num_ready = 0;
 	turn = -1;
 
-	tprintf("End of round %d\n", round_num);
+	tprintf(" End of round %d\n", round_num);
 	broadcast_event(next_round);
 }
 
@@ -182,7 +179,7 @@ void moderator_main(){
 		if(i+1==Q) 
 			is_last_round = true;
 	}
-	tprintf("End game\n");
+	tprintf(" End game\n");
 }
 
 void commentator_main(void *id_){
@@ -286,7 +283,7 @@ int queue_push(int i)
 
 		return_value = queue->count;
 	}
-	tprintf("Commentator #%d generates an answer. Position in queue %d\n", i, return_value-1);
+	tprintf(" Commentator #%d generates an answer. Position in queue %d\n", i, return_value-1);
 
 	pthread_mutex_unlock(&queue_lock);
 	return return_value;
