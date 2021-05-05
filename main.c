@@ -17,6 +17,13 @@ const int MAX_PARAMETER_SIZE = 5;
 int N, Q, T;
 float P, B;
 
+// Color codes.
+char boldRed[20] = "\033[1m\033[31m";
+char boldGreen[20] = "\033[1m\033[32m";
+char boldCyan[20] = "\033[1m\033[36m";
+char boldBlue[20] = "\033[1m\033[34m";
+char white[20] = "\033[1m\033[37m";
+
 // Creating queue struct.
 typedef struct
 {
@@ -136,9 +143,9 @@ void commentator_round(void *id_)
 		while(turn!=id);
 
 		int sleep_amount = uniform_random(T);
-		tprintf(" Commentator #%d’s turn to speak for %d seconds\n", id, sleep_amount);
+		tprintf(" %sCommentator #%d’s turn to speak for %d seconds!%s\n", boldCyan, id, sleep_amount, white);
 		pthread_sleep(sleep_amount);
-		tprintf(" Commentator #%d finished speaking\n", id);
+		tprintf(" Commentator #%d finished speaking.\n", id);
 		
 		signal_event(commentator_done);
 	}
@@ -150,7 +157,7 @@ void moderator_round(int round_num)
 {	
 	while(num_ready<N);
 
-	tprintf(" Moderator asked the question %d\n", round_num);
+	tprintf(" %sModerator asked the question %d!%s\n", boldRed, round_num, white);
 	broadcast_event(question_asked);
 	
 	wait_event(all_decided);
@@ -169,7 +176,7 @@ void moderator_round(int round_num)
 	num_ready = 0;
 	turn = -1;
 
-	tprintf(" End of round %d\n", round_num);
+	tprintf(" %sEnd of the round %d.%s\n", boldBlue, round_num, white);
 	broadcast_event(next_round);
 }
 
@@ -179,7 +186,7 @@ void moderator_main(){
 		if(i+1==Q) 
 			is_last_round = true;
 	}
-	tprintf(" End game\n");
+	tprintf(" %sEnd of the news.\n", boldBlue);
 }
 
 void commentator_main(void *id_){
@@ -243,7 +250,7 @@ void tprintf(char *format, ...)
 
 	int len = strlen(format) + 11;
 	char time_added_format[len];
-	sprintf(time_added_format, "%02d:%02d:%02d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec);
+	sprintf(time_added_format, "<%02d:%02d:%02d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec);
 	strncat(time_added_format, format, len);
 
 	va_list args;
@@ -283,7 +290,7 @@ int queue_push(int i)
 
 		return_value = queue->count;
 	}
-	tprintf(" Commentator #%d generates an answer. Position in queue %d\n", i, return_value-1);
+	tprintf(" %sCommentator #%d generates an answer. Position in queue: %d!%s\n", boldGreen, i, return_value-1, white);
 
 	pthread_mutex_unlock(&queue_lock);
 	return return_value;
