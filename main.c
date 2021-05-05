@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <stdarg.h>
 
-// Taken from https://stackoverflow.com/a/30106751 for prevent warnings while compiling.
+// Taken from https://stackoverflow.com/a/30106751 to prevent warnings while compiling.
 #define INT2VOIDP(i) (void*)(uintptr_t)(i)
 
 // Setting max parameter size as a global variable.
