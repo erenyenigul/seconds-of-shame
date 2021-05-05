@@ -10,6 +10,9 @@
 #include <unistd.h>
 #include <stdarg.h>
 
+// Taken from https://stackoverflow.com/a/30106751 for prevent warnings while compiling.
+#define INT2VOIDP(i) (void*)(uintptr_t)(i)
+
 // Setting max parameter size as a global variable.
 const int MAX_PARAMETER_SIZE = 5;
 
@@ -93,9 +96,9 @@ int main(int argc, char *argv[])
 
 	for (int i = 0; i < N; i++)
 	{
-		pthread_create(&commentators[i], NULL, &commentator_main, (void *)i);
+		pthread_create(&commentators[i], NULL, (void *) commentator_main, INT2VOIDP(i));
 	}
-	pthread_create(&moderator, NULL, &moderator_main, NULL);
+	pthread_create(&moderator, NULL, (void *) moderator_main, NULL);
 
 	// TODO Change this to join.
 	pthread_exit(NULL);
