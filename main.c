@@ -13,15 +13,11 @@
 // Setting max parameter size as a global variable.
 const int MAX_PARAMETER_SIZE = 5;
 
-// Each index will save the related setting as following:
-// Index 0 - n parameter's value.
-// Index 1 - p parameter's value.
-// Index 2 - q parameter's value.
-// Index 3 - t parameter's value.
-// Index 4 - b parameter's value.
+// Declaring global variables for the further use.
 int N, Q, T;
 float P, B;
 
+// Creating queue struct.
 typedef struct
 {
 	int *elems;
@@ -30,12 +26,14 @@ typedef struct
 	int max_s;
 } queue_t;
 
+// Creating event struct.
 typedef struct
 {
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;
 } event_t;
 
+// Declearing function prototypes.
 bool roll_dice(float win_probability);
 int validate_program_parameters(int parameter_count, char **parameter_list);
 void tprintf(char *format, ...);
