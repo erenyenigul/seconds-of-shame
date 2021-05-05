@@ -141,7 +141,7 @@ void commentator_round(void *id_)
 		int sleep_amount = uniform_random(T);
 		tprintf(" Commentator #%d’s turn to speak for %d seconds\n", id, sleep_amount);
 		pthread_sleep(sleep_amount);
-		tprintf("Commentator #%d finished speaking\n", id);
+		tprintf(" Commentator #%d finished speaking\n", id);
 		
 		signal_event(commentator_done);
 	}
