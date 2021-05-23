@@ -243,14 +243,18 @@ int uniform_random(int upper_bound){
 
 void tprintf(char *format, ...)
 {
+	struct timeval ms_time;
+	gettimeofday(&ms_time, NULL);
+	int milli = ms_time.tv_usec / 1000;
+	
 	time_t s, val = 1;
 	struct tm *current_time;
 	s = time(NULL);
 	current_time = localtime(&s);
 
-	int len = strlen(format) + 11;
+	int len = strlen(format) + 50;
 	char time_added_format[len];
-	sprintf(time_added_format, "<%02d:%02d:%02d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec);
+	sprintf(time_added_format, "<%02d:%02d:%02d:%02d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec, milli);
 	strncat(time_added_format, format, len);
 
 	va_list args;
