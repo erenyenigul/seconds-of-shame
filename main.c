@@ -192,6 +192,8 @@ void moderator_main(){
 			is_last_round = true;
 	}
 	tprintf(" %sEnd of the game.\n", boldBlue);
+
+	exit(0);
 }
 
 void commentator_main(void *id_){
