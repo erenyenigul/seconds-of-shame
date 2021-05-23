@@ -38,7 +38,13 @@ typedef struct
 {
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;
+	int count;
 } event_t;
+
+typedef struct{
+	pthread_mutex_t mutex;
+	int value;
+} atomic_t;
 
 // Declearing function prototypes.
 bool roll_dice(float win_probability);
@@ -59,26 +65,31 @@ int queue_size();
 void event_init(event_t **event_ptr);
 void wait_event(event_t *event);
 void signal_event(event_t *event);
-void broadcast_event(event_t *event);
+void broadcast_event(event_t *event, int n);
+
+void atomic_init(atomic_t **atomic);
+void atomic_set(atomic_t *atomic, int i);
+int atomic_get(atomic_t *atomic);
+int atomic_cond_set(atomic_t *atomic, int cond, int value);
+void atomic_cond_signal_event(atomic_t *atomic, int cond, event_t *event);
+void atomic_increment(atomic_t *atomic);
 
 //Global queue, initialized in main()
 queue_t *queue;
 
 //Global events
+event_t *all_ready;
 event_t *all_decided;
 event_t *question_asked;
 event_t *commentator_done;
 event_t *next_round;
 
-//Global locks
-pthread_mutex_t decided_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t turn_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t ready_lock = PTHREAD_MUTEX_INITIALIZER;
+//Atomic ints
+atomic_t *turn;
+atomic_t *num_decided;
+atomic_t *num_ready;
 
-int num_decided = 0;
-int num_ready = 0;
-int turn = -1;
+pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
 bool is_last_round = false;
 
@@ -90,10 +101,16 @@ int main(int argc, char *argv[])
 
 	queue_init();
 
+	event_init(&all_ready);
 	event_init(&all_decided);
 	event_init(&question_asked);
 	event_init(&commentator_done);
 	event_init(&next_round);
+
+	atomic_init(&turn);
+	atomic_set(turn, -1);
+	atomic_init(&num_decided);
+	atomic_init(&num_ready);
 
 	pthread_t commentators[N];
 	pthread_t moderator;
@@ -115,10 +132,8 @@ void commentator_round(void *id_)
 {
 	int id = (int) id_;
 	
-	pthread_mutex_lock(&ready_lock);
-	num_ready++;
-	pthread_mutex_unlock(&ready_lock);
-
+	atomic_increment(num_ready);
+	
 	wait_event(question_asked);
 		
 	bool will_answer = roll_dice(P);
@@ -129,19 +144,12 @@ void commentator_round(void *id_)
 		queue_push(id);
 	}
 	
-	pthread_mutex_lock(&decided_lock);
-	num_decided++;
-	//printf("%d\n", num_decided);
-	if(num_decided >= N){
-		pthread_mutex_unlock(&decided_lock);
-		signal_event(all_decided);
-	}else{
-		pthread_mutex_unlock(&decided_lock);
-	}
+	atomic_increment(num_decided);
+	atomic_cond_signal_event(num_decided, N, all_decided);
 
 	if(will_answer){
-		while(turn!=id);
-
+		while(atomic_get(turn)!=id);
+		
 		int sleep_amount = uniform_random(T);
 		tprintf(" %sCommentator #%d’s turn to speak for %d seconds!%s\n", boldCyan, id, sleep_amount, white);
 		pthread_sleep(sleep_amount);
@@ -155,29 +163,26 @@ void commentator_round(void *id_)
 
 void moderator_round(int round_num)
 {	
-	while(num_ready<N);
-
+	while(atomic_get(num_ready)!=N);
+    
 	tprintf(" %sModerator asked the question %d!%s\n", boldRed, round_num, white);
-	broadcast_event(question_asked);
+	broadcast_event(question_asked, N);
 	
 	wait_event(all_decided);
 
 	int commentator_id;
 	
 	while((commentator_id = queue_pop())!=-1){
-	 	pthread_mutex_lock(&turn_lock);
-		turn = commentator_id;
-		pthread_mutex_unlock(&turn_lock);
-
+		atomic_set(turn, commentator_id);
 		wait_event(commentator_done);
 	}
 
-	num_decided = 0;
-	num_ready = 0;
-	turn = -1;
+	atomic_set(num_decided, 0);
+	atomic_set(num_ready, 0);
+	atomic_set(turn, -1);
 
 	tprintf(" %sEnd of the round %d.%s\n", boldBlue, round_num, white);
-	broadcast_event(next_round);
+	broadcast_event(next_round, N);
 }
 
 void moderator_main(){
@@ -186,7 +191,7 @@ void moderator_main(){
 		if(i+1==Q) 
 			is_last_round = true;
 	}
-	tprintf(" %sEnd of the news.\n", boldBlue);
+	tprintf(" %sEnd of the game.\n", boldBlue);
 }
 
 void commentator_main(void *id_){
@@ -334,27 +339,84 @@ void event_init(event_t **event_ptr)
 	event_t *event = (event_t *)malloc(sizeof(event_t));
 	event->cond = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 	event->mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-
+	event->count = 0;
 	*event_ptr = event;
 }
 
 void wait_event(event_t *event)
 {
 	pthread_mutex_lock(&(event->mutex));
-	pthread_cond_wait(&(event->cond), &(event->mutex));
+	if(event->count==0){
+		pthread_cond_wait(&(event->cond), &(event->mutex));
+	}
+	event->count--;
 	pthread_mutex_unlock(&(event->mutex));
 }
 
 void signal_event(event_t *event)
 {
 	pthread_mutex_lock(&(event->mutex));
+	event->count++;
 	pthread_cond_signal(&(event->cond));
 	pthread_mutex_unlock(&(event->mutex));
 }
 
-void broadcast_event(event_t *event)
+void broadcast_event(event_t *event, int n)
 {
 	pthread_mutex_lock(&(event->mutex));
+	event->count += n;
 	pthread_cond_broadcast(&(event->cond));
 	pthread_mutex_unlock(&(event->mutex));
+}
+
+void atomic_init(atomic_t ** atomic)
+{
+	*atomic = (atomic_t *) malloc(sizeof(atomic_t));
+	(*atomic)->mutex = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
+	(*atomic)->value = 0;
+}
+
+void atomic_set(atomic_t *atomic, int i)
+{
+	pthread_mutex_lock(&(atomic->mutex));
+	atomic->value = i;
+	pthread_mutex_unlock(&(atomic->mutex));
+}
+
+int atomic_get(atomic_t *atomic)
+{
+	int result;
+	pthread_mutex_lock(&(atomic->mutex));
+	result = atomic->value;
+	pthread_mutex_unlock(&(atomic->mutex));
+	return result;
+}
+
+int atomic_cond_set(atomic_t *atomic, int cond, int value)
+{
+	int result = 0;
+	pthread_mutex_lock(&(atomic->mutex));
+	if(atomic->value == cond){
+		atomic->value = value;
+		result = 1;
+	}
+	pthread_mutex_unlock(&(atomic->mutex));
+	return result;
+}
+
+void atomic_cond_signal_event(atomic_t *atomic, int cond, event_t *event)
+{
+	pthread_mutex_lock(&(atomic->mutex));
+	if (atomic->value == cond)
+	{
+		signal_event(event);
+	}
+	pthread_mutex_unlock(&(atomic->mutex));
+}
+
+void atomic_increment(atomic_t *atomic)
+{
+	pthread_mutex_lock(&(atomic->mutex));
+	atomic->value++;
+	pthread_mutex_unlock(&(atomic->mutex));
 }
