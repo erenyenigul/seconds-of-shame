@@ -15,14 +15,15 @@ const int MAX_PARAMETER_SIZE = 5;
 
 // Declaring global variables for the further use.
 int N, Q, T;
-float P, B;
+float P, B; 
 
 // Color codes.
 char boldRed[20] = "\033[1m\033[31m";
 char boldGreen[20] = "\033[1m\033[32m";
 char boldCyan[20] = "\033[1m\033[36m";
 char boldBlue[20] = "\033[1m\033[34m";
-char white[20] = "\033[1m\033[37m";
+char white[20] = "\033[m\033[1m\033[37m";
+char boldYellow[20] = "\033[7m\033[1m\033[33m";
 
 // Creating queue struct.
 typedef struct
@@ -50,12 +51,13 @@ typedef struct{
 bool roll_dice(float win_probability);
 int validate_program_parameters(int parameter_count, char **parameter_list);
 void tprintf(char *format, ...);
-int uniform_random(int upper_bound);
+int uniform_random(int lower_bound, int upper_bound);
 
 void commentator_main(void *id_);
 void commentator_round(void *id_);
 void moderator_main();
 void moderator_round();
+void news_reporter_main();
 
 void queue_init();
 int queue_push(int i);
@@ -66,6 +68,8 @@ void event_init(event_t **event_ptr);
 void wait_event(event_t *event);
 void signal_event(event_t *event);
 void broadcast_event(event_t *event, int n);
+void reset_event(event_t *event);
+int timed_wait_event(event_t *event, long ms);
 
 void atomic_init(atomic_t **atomic);
 void atomic_set(atomic_t *atomic, int i);
@@ -83,11 +87,14 @@ event_t *all_decided;
 event_t *question_asked;
 event_t *commentator_done;
 event_t *next_round;
+event_t *breaking_news_start;
+event_t *breaking_news_end;
 
 //Atomic ints
 atomic_t *turn;
 atomic_t *num_decided;
 atomic_t *num_ready;
+atomic_t *is_breaking_news;
 
 pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -100,33 +107,65 @@ int main(int argc, char *argv[])
 		return -1;
 
 	queue_init();
-
+	
 	event_init(&all_ready);
 	event_init(&all_decided);
 	event_init(&question_asked);
 	event_init(&commentator_done);
 	event_init(&next_round);
+	event_init(&breaking_news_start);
+	event_init(&breaking_news_end);
 
 	atomic_init(&turn);
 	atomic_set(turn, -1);
 	atomic_init(&num_decided);
 	atomic_init(&num_ready);
+	atomic_init(&is_breaking_news);
 
 	pthread_t commentators[N];
 	pthread_t moderator;
+	pthread_t news_reporter;
 
 	for (int i = 0; i < N; i++)
 	{
 		pthread_create(&commentators[i], NULL, (void *) commentator_main, (void *) i);
 	}
 	pthread_create(&moderator, NULL, (void *) moderator_main, NULL);
+	pthread_create(&news_reporter, NULL, (void *) news_reporter_main, NULL);
 
-	// TODO Change this to join.
+	while(!is_last_round){
+		pthread_sleep(1);
+		if(roll_dice(B)){
+			broadcast_event(breaking_news_start, 2);
+			wait_event(breaking_news_end);
+		}
+	}
+
 	pthread_exit(NULL);
-	
 }
 
 //Thread Related Functions
+
+//What do I need:
+
+// Commentators should stop commenting after breaking news start (wait event)
+// Moderator should check if breaking news before starting turns of commentators 
+
+// atomic int for determining if breaking news is ongoing
+// events: for cond wait 
+// 	used by: commentator that was speaking
+
+void news_reporter_main(){
+	while(!is_last_round){
+		wait_event(breaking_news_start);
+		atomic_set(is_breaking_news, 1);
+		tprintf(" %sBreaking news!%s\n", boldYellow, white);
+		pthread_sleep(5);
+		tprintf(" %sBreaking news ends!%s\n", boldYellow, white);
+		atomic_set(is_breaking_news, 0);
+		broadcast_event(breaking_news_end, 2);
+	}
+}
 
 void commentator_round(void *id_)
 {
@@ -135,7 +174,7 @@ void commentator_round(void *id_)
 	atomic_increment(num_ready);
 	
 	wait_event(question_asked);
-		
+
 	bool will_answer = roll_dice(P);
 	
 	if(will_answer){
@@ -150,11 +189,15 @@ void commentator_round(void *id_)
 	if(will_answer){
 		while(atomic_get(turn)!=id);
 		
-		int sleep_amount = uniform_random(T);
-		tprintf(" %sCommentator #%d’s turn to speak for %d seconds!%s\n", boldCyan, id, sleep_amount, white);
-		pthread_sleep(sleep_amount);
-		tprintf(" Commentator #%d finished speaking.\n", id);
+		long sleep_amount = uniform_random(1000, T*1000);
+		tprintf(" %sCommentator #%d’s turn to speak for %.3f seconds!%s\n", boldCyan, id, ((float)sleep_amount)/1000, white);
 		
+		int result = timed_wait_event(breaking_news_start, sleep_amount);
+		if(result)
+			tprintf(" Commentator #%d finished speaking.\n", id);
+		else
+			tprintf(" Commentator #%d is cut short due to breaking news.\n", id);
+
 		signal_event(commentator_done);
 	}
 
@@ -173,9 +216,13 @@ void moderator_round(int round_num)
 	int commentator_id;
 	
 	while((commentator_id = queue_pop())!=-1){
+		if(atomic_get(is_breaking_news))
+			wait_event(breaking_news_end);
 		atomic_set(turn, commentator_id);
 		wait_event(commentator_done);
 	}
+	if (atomic_get(is_breaking_news))
+		wait_event(breaking_news_end);
 
 	atomic_set(num_decided, 0);
 	atomic_set(num_ready, 0);
@@ -244,8 +291,9 @@ bool roll_dice(float win_probability)
 	return dice < win_probability;
 }
 
-int uniform_random(int upper_bound){
-	return (int) 1+(((int)rand())%(upper_bound));
+int uniform_random(int lower_bound, int upper_bound){
+	int random_num = (((int)rand()) % (upper_bound - lower_bound)) + lower_bound;
+	return random_num;
 }
 
 void tprintf(char *format, ...)
@@ -261,7 +309,7 @@ void tprintf(char *format, ...)
 
 	int len = strlen(format) + 50;
 	char time_added_format[len];
-	sprintf(time_added_format, "<%02d:%02d:%02d:%02d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec, milli);
+	sprintf(time_added_format, "<%02d:%02d:%02d:%03d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec, milli);
 	strncat(time_added_format, format, len);
 
 	va_list args;
@@ -348,10 +396,10 @@ void event_init(event_t **event_ptr)
 void wait_event(event_t *event)
 {
 	pthread_mutex_lock(&(event->mutex));
-	if(event->count==0){
+	event->count--;
+	if(event->count<0){
 		pthread_cond_wait(&(event->cond), &(event->mutex));
 	}
-	event->count--;
 	pthread_mutex_unlock(&(event->mutex));
 }
 
@@ -360,6 +408,42 @@ void signal_event(event_t *event)
 	pthread_mutex_lock(&(event->mutex));
 	event->count++;
 	pthread_cond_signal(&(event->cond));
+	pthread_mutex_unlock(&(event->mutex));
+}
+
+int timed_wait_event(event_t *event, long ms){
+	int result;
+
+	struct timespec tm;
+	struct timeval now;
+	int rt;
+	
+	struct timeval tp;
+	struct timespec timetoexpire;
+	// When to expire is an absolute time, so get the current time and add
+	// it to our delay time
+	double seconds = ((double)ms) / 1000;
+	gettimeofday(&tp, NULL);
+	long new_nsec = tp.tv_usec * 1000 + (seconds - (long)seconds) * 1e9;
+	timetoexpire.tv_sec = tp.tv_sec + (long)seconds + (new_nsec / (long)1e9);
+	timetoexpire.tv_nsec = new_nsec % (long)1e9;
+
+	pthread_mutex_lock(&(event->mutex));
+	if(event->count<=0){
+		result = pthread_cond_timedwait(&(event->cond), &(event->mutex), &timetoexpire);
+		if (result == 0)
+			event->count--;
+	}else{
+		event->count--;
+	}
+	pthread_mutex_unlock(&(event->mutex));
+
+	return result;
+}
+
+void reset_event(event_t *event){
+	pthread_mutex_lock(&(event->mutex));
+	event->count = 0;
 	pthread_mutex_unlock(&(event->mutex));
 }
 
