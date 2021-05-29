@@ -1,13 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <time.h>
 #include <sys/time.h>
 #include <string.h>
 #include <stdbool.h>
-#include <semaphore.h>
 #include <unistd.h>
 #include <stdarg.h>
+
 #include "pthread_sleep.c"
 #include "helper/util.h"
 #include "helper/event.h"
@@ -97,17 +96,6 @@ int main(int argc, char *argv[])
 	}
 	exit(0);
 }
-
-//Thread Related Functions
-
-//What do I need:
-
-// Commentators should stop commenting after breaking news start (wait event)
-// Moderator should check if breaking news before starting turns of commentators 
-
-// atomic int for determining if breaking news is ongoing
-// events: for cond wait 
-// 	used by: commentator that was speaking
 
 void news_reporter_main(){
 	while(!is_last_round){
