@@ -1,5 +1,7 @@
 main
 a.out
 *.pdf
-.vscode
+*.vscode
 test.c
+.DS_Store
+a.out
