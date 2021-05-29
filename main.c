@@ -21,12 +21,12 @@ int N, Q, T;
 float P, B; 
 
 // Color codes.
-char boldRed[20] = "\033[1m\033[31m";
-char boldGreen[20] = "\033[1m\033[32m";
-char boldCyan[20] = "\033[1m\033[36m";
-char boldBlue[20] = "\033[1m\033[34m";
-char white[20] = "\033[m\033[1m\033[37m";
-char boldYellow[20] = "\033[7m\033[1m\033[33m";
+char boldRed[20] 	= 	"\033[1m\033[31m";
+char boldGreen[20] 	= 	"\033[1m\033[32m";
+char boldCyan[20] 	= 	"\033[1m\033[36m";
+char boldBlue[20] 	= 	"\033[1m\033[34m";
+char white[20] 		= 	"\033[m\033[1m\033[37m";
+char boldYellow[20]	= 	"\033[7m\033[1m\033[33m";
 
 void commentator_main(void *id_);
 void commentator_round(void *id_);
@@ -38,7 +38,6 @@ void news_reporter_main();
 queue_t *queue;
 
 //Global events
-event_t *all_ready;
 event_t *all_decided;
 event_t *question_asked;
 event_t *commentator_done;
@@ -49,7 +48,6 @@ event_t *breaking_news_end;
 //Atomic ints
 atomic_t *turn;
 atomic_t *num_decided;
-atomic_t *num_ready;
 atomic_t *is_breaking_news;
 
 bool is_last_round = false;
@@ -62,7 +60,6 @@ int main(int argc, char *argv[])
 
 	queue_init(&queue, N);
 	
-	event_init(&all_ready);
 	event_init(&all_decided);
 	event_init(&question_asked);
 	event_init(&commentator_done);
@@ -73,7 +70,6 @@ int main(int argc, char *argv[])
 	atomic_init(&turn);
 	atomic_set(turn, -1);
 	atomic_init(&num_decided);
-	atomic_init(&num_ready);
 	atomic_init(&is_breaking_news);
 
 	pthread_t commentators[N];
@@ -113,8 +109,6 @@ void commentator_round(void *id_)
 {
 	int id = (int) id_;
 	
-	atomic_increment(num_ready);
-	
 	wait_event(question_asked);
 
 	bool will_answer = roll_dice(P);
@@ -148,9 +142,10 @@ void commentator_round(void *id_)
 }
 
 void moderator_round(int round_num)
-{	
-	while(atomic_get(num_ready)!=N);
-    
+{
+	if (atomic_get(is_breaking_news))
+		wait_event(breaking_news_end);
+	
 	tprintf(" %sModerator asked the question %d!%s\n", boldRed, round_num, white);
 	broadcast_event(question_asked, N);
 	
@@ -161,6 +156,7 @@ void moderator_round(int round_num)
 	while((commentator_id = queue_pop(queue))!=-1){
 		if(atomic_get(is_breaking_news))
 			wait_event(breaking_news_end);
+		
 		atomic_set(turn, commentator_id);
 		wait_event(commentator_done);
 	}
@@ -168,7 +164,6 @@ void moderator_round(int round_num)
 		wait_event(breaking_news_end);
 
 	atomic_set(num_decided, 0);
-	atomic_set(num_ready, 0);
 	atomic_set(turn, -1);
 
 	tprintf(" %sEnd of the round %d.%s\n", boldBlue, round_num, white);
@@ -182,8 +177,6 @@ void moderator_main(){
 			is_last_round = true;
 	}
 	tprintf(" %sEnd of the game.\n", boldBlue);
-
-	exit(0);
 }
 
 void commentator_main(void *id_){
