@@ -5,3 +5,4 @@ a.out
 test.c
 .DS_Store
 a.out
+.gitattributes
