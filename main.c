@@ -9,10 +9,10 @@
 #include <unistd.h>
 #include <stdarg.h>
 #include "pthread_sleep.c"
-#include "lib/util.h"
-#include "lib/event.h"
-#include "lib/atomic.h"
-#include "lib/queue.h"
+#include "helper/util.h"
+#include "helper/event.h"
+#include "helper/atomic.h"
+#include "helper/queue.h"
 
 // Setting max parameter size as a global variable.
 const int MAX_PARAMETER_SIZE = 5;
