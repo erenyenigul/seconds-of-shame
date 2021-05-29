@@ -4,11 +4,15 @@
 #include <time.h>
 #include <sys/time.h>
 #include <string.h>
-#include "pthread_sleep.c"
 #include <stdbool.h>
 #include <semaphore.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include "pthread_sleep.c"
+#include "lib/util.h"
+#include "lib/event.h"
+#include "lib/atomic.h"
+#include "lib/queue.h"
 
 // Setting max parameter size as a global variable.
 const int MAX_PARAMETER_SIZE = 5;
@@ -25,58 +29,11 @@ char boldBlue[20] = "\033[1m\033[34m";
 char white[20] = "\033[m\033[1m\033[37m";
 char boldYellow[20] = "\033[7m\033[1m\033[33m";
 
-// Creating queue struct.
-typedef struct
-{
-	int *elems;
-	int in;
-	int count;
-	int max_s;
-} queue_t;
-
-// Creating event struct.
-typedef struct
-{
-	pthread_cond_t cond;
-	pthread_mutex_t mutex;
-	int count;
-} event_t;
-
-typedef struct{
-	pthread_mutex_t mutex;
-	int value;
-} atomic_t;
-
-// Declearing function prototypes.
-bool roll_dice(float win_probability);
-int validate_program_parameters(int parameter_count, char **parameter_list);
-void tprintf(char *format, ...);
-int uniform_random(int lower_bound, int upper_bound);
-
 void commentator_main(void *id_);
 void commentator_round(void *id_);
 void moderator_main();
 void moderator_round();
 void news_reporter_main();
-
-void queue_init();
-int queue_push(int i);
-int queue_pop();
-int queue_size();
-
-void event_init(event_t **event_ptr);
-void wait_event(event_t *event);
-void signal_event(event_t *event);
-void broadcast_event(event_t *event, int n);
-void reset_event(event_t *event);
-int timed_wait_event(event_t *event, long ms);
-
-void atomic_init(atomic_t **atomic);
-void atomic_set(atomic_t *atomic, int i);
-int atomic_get(atomic_t *atomic);
-int atomic_cond_set(atomic_t *atomic, int cond, int value);
-void atomic_cond_signal_event(atomic_t *atomic, int cond, event_t *event);
-void atomic_increment(atomic_t *atomic);
 
 //Global queue, initialized in main()
 queue_t *queue;
@@ -96,8 +53,6 @@ atomic_t *num_decided;
 atomic_t *num_ready;
 atomic_t *is_breaking_news;
 
-pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
-
 bool is_last_round = false;
 
 int main(int argc, char *argv[])
@@ -106,7 +61,7 @@ int main(int argc, char *argv[])
 	if (!validate_program_parameters(argc, argv))
 		return -1;
 
-	queue_init();
+	queue_init(&queue, N);
 	
 	event_init(&all_ready);
 	event_init(&all_decided);
@@ -140,8 +95,7 @@ int main(int argc, char *argv[])
 			wait_event(breaking_news_end);
 		}
 	}
-
-	pthread_exit(NULL);
+	exit(0);
 }
 
 //Thread Related Functions
@@ -180,7 +134,8 @@ void commentator_round(void *id_)
 	if(will_answer){
 		//queue_push() operation is secured with lock. The lock is implemented in the function
 		//queue_push also prints that commentator generates an answer
-		queue_push(id);
+		int size = queue_push(queue, id);
+		tprintf(" %sCommentator #%d generates an answer. Position in queue: %d!%s\n", boldGreen, id,  size-1, white);
 	}
 	
 	atomic_increment(num_decided);
@@ -215,7 +170,7 @@ void moderator_round(int round_num)
 
 	int commentator_id;
 	
-	while((commentator_id = queue_pop())!=-1){
+	while((commentator_id = queue_pop(queue))!=-1){
 		if(atomic_get(is_breaking_news))
 			wait_event(breaking_news_end);
 		atomic_set(turn, commentator_id);
@@ -248,11 +203,8 @@ void commentator_main(void *id_){
 		commentator_round(id_);
 }
 
-//Misc Functions
-
 int validate_program_parameters(int parameter_count, char **parameter_list)
 {
-
 	// Checking if parameter count is valid.
 	if (parameter_count != 11)
 	{
@@ -283,226 +235,4 @@ int validate_program_parameters(int parameter_count, char **parameter_list)
 
 	// If inputs are valid, returning 1.
 	return 1;
-}
-
-bool roll_dice(float win_probability)
-{
-	float dice = (float)rand() / RAND_MAX;
-	return dice < win_probability;
-}
-
-int uniform_random(int lower_bound, int upper_bound){
-	int random_num = (((int)rand()) % (upper_bound - lower_bound)) + lower_bound;
-	return random_num;
-}
-
-void tprintf(char *format, ...)
-{
-	struct timeval ms_time;
-	gettimeofday(&ms_time, NULL);
-	int milli = ms_time.tv_usec / 1000;
-	
-	time_t s, val = 1;
-	struct tm *current_time;
-	s = time(NULL);
-	current_time = localtime(&s);
-
-	int len = strlen(format) + 50;
-	char time_added_format[len];
-	sprintf(time_added_format, "<%02d:%02d:%02d:%03d>", current_time->tm_hour, current_time->tm_min, current_time->tm_sec, milli);
-	strncat(time_added_format, format, len);
-
-	va_list args;
-	va_start(args, format);
-	vprintf(time_added_format, args);
-	va_end(args);
-}
-
-//Queue Related Functions
-//push, pop and size use mutex for synching the adding/removing process.
-
-void queue_init()
-{
-	queue = (queue_t *)malloc(sizeof(queue_t));
-	queue->elems = (int *)malloc(sizeof(int) * N);
-
-	queue->max_s = N;
-	queue->in = 0;
-	queue->count = 0;
-}
-
-int queue_push(int i)
-{
-	pthread_mutex_lock(&queue_lock);
-
-	int return_value;
-	int max_s = queue->max_s;
-
-	if (queue->count >= max_s)
-	{
-		return_value = -1;
-	}
-	else
-	{
-		queue->elems[(queue->in + queue->count) % max_s] = i;
-		queue->count++;
-
-		return_value = queue->count;
-	}
-	tprintf(" %sCommentator #%d generates an answer. Position in queue: %d!%s\n", boldGreen, i, return_value-1, white);
-
-	pthread_mutex_unlock(&queue_lock);
-	return return_value;
-}
-
-int queue_pop()
-{
-	pthread_mutex_lock(&queue_lock);
-	int max_s = queue->max_s;
-	int return_value;
-
-	if (queue->count <= 0)
-		return_value = -1;
-	else
-	{
-		return_value = queue->elems[queue->in % max_s];
-		queue->in++;
-		queue->count--;
-	}
-
-	pthread_mutex_unlock(&queue_lock);
-	return return_value;
-}
-
-int queue_size(){
-	int size = 0;
-	pthread_mutex_lock(&queue_lock);
-	size= queue->count;
-	pthread_mutex_unlock(&queue_lock);
-	return size;
-}
-
-//Event Related Functions
-
-void event_init(event_t **event_ptr)
-{
-	event_t *event = (event_t *)malloc(sizeof(event_t));
-	event->cond = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
-	event->mutex = (pthread_mutex_t)PTHREAD_MUTEX_INITIALIZER;
-	event->count = 0;
-	*event_ptr = event;
-}
-
-void wait_event(event_t *event)
-{
-	pthread_mutex_lock(&(event->mutex));
-	event->count--;
-	if(event->count<0){
-		pthread_cond_wait(&(event->cond), &(event->mutex));
-	}
-	pthread_mutex_unlock(&(event->mutex));
-}
-
-void signal_event(event_t *event)
-{
-	pthread_mutex_lock(&(event->mutex));
-	event->count++;
-	pthread_cond_signal(&(event->cond));
-	pthread_mutex_unlock(&(event->mutex));
-}
-
-int timed_wait_event(event_t *event, long ms){
-	int result;
-
-	struct timespec tm;
-	struct timeval now;
-	int rt;
-	
-	struct timeval tp;
-	struct timespec timetoexpire;
-	// When to expire is an absolute time, so get the current time and add
-	// it to our delay time
-	double seconds = ((double)ms) / 1000;
-	gettimeofday(&tp, NULL);
-	long new_nsec = tp.tv_usec * 1000 + (seconds - (long)seconds) * 1e9;
-	timetoexpire.tv_sec = tp.tv_sec + (long)seconds + (new_nsec / (long)1e9);
-	timetoexpire.tv_nsec = new_nsec % (long)1e9;
-
-	pthread_mutex_lock(&(event->mutex));
-	if(event->count<=0){
-		result = pthread_cond_timedwait(&(event->cond), &(event->mutex), &timetoexpire);
-		if (result == 0)
-			event->count--;
-	}else{
-		event->count--;
-	}
-	pthread_mutex_unlock(&(event->mutex));
-
-	return result;
-}
-
-void reset_event(event_t *event){
-	pthread_mutex_lock(&(event->mutex));
-	event->count = 0;
-	pthread_mutex_unlock(&(event->mutex));
-}
-
-void broadcast_event(event_t *event, int n)
-{
-	pthread_mutex_lock(&(event->mutex));
-	event->count += n;
-	pthread_cond_broadcast(&(event->cond));
-	pthread_mutex_unlock(&(event->mutex));
-}
-
-void atomic_init(atomic_t ** atomic)
-{
-	*atomic = (atomic_t *) malloc(sizeof(atomic_t));
-	(*atomic)->mutex = (pthread_mutex_t) PTHREAD_MUTEX_INITIALIZER;
-	(*atomic)->value = 0;
-}
-
-void atomic_set(atomic_t *atomic, int i)
-{
-	pthread_mutex_lock(&(atomic->mutex));
-	atomic->value = i;
-	pthread_mutex_unlock(&(atomic->mutex));
-}
-
-int atomic_get(atomic_t *atomic)
-{
-	int result;
-	pthread_mutex_lock(&(atomic->mutex));
-	result = atomic->value;
-	pthread_mutex_unlock(&(atomic->mutex));
-	return result;
-}
-
-int atomic_cond_set(atomic_t *atomic, int cond, int value)
-{
-	int result = 0;
-	pthread_mutex_lock(&(atomic->mutex));
-	if(atomic->value == cond){
-		atomic->value = value;
-		result = 1;
-	}
-	pthread_mutex_unlock(&(atomic->mutex));
-	return result;
-}
-
-void atomic_cond_signal_event(atomic_t *atomic, int cond, event_t *event)
-{
-	pthread_mutex_lock(&(atomic->mutex));
-	if (atomic->value == cond)
-	{
-		signal_event(event);
-	}
-	pthread_mutex_unlock(&(atomic->mutex));
-}
-
-void atomic_increment(atomic_t *atomic)
-{
-	pthread_mutex_lock(&(atomic->mutex));
-	atomic->value++;
-	pthread_mutex_unlock(&(atomic->mutex));
 }
