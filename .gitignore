@@ -1,6 +1,6 @@
 main
 a.out
-*.pdf
+*.docx
 *.vscode
 test.c
 .DS_Store
