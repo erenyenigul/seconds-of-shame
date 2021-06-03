@@ -120,10 +120,13 @@ void commentator_round(void *id_)
 		tprintf(" %sCommentator #%d generates an answer. Position in queue: %d!%s\n", boldGreen, id,  size-1, white);
 	}
 	
+	
 	atomic_increment(num_decided);
+	//If all of the commentators decided, signal moderator
 	atomic_cond_signal_event(num_decided, N, all_decided);
 
 	if(will_answer){
+		//Wait for the turn
 		while(atomic_get(turn)!=id);
 		
 		long sleep_amount = uniform_random(1000, T*1000);
@@ -142,27 +145,33 @@ void commentator_round(void *id_)
 }
 
 void moderator_round(int round_num)
-{
+{	
+	//Check breaking news
 	if (atomic_get(is_breaking_news))
 		wait_event(breaking_news_end);
 	
 	tprintf(" %sModerator asked the question %d!%s\n", boldRed, round_num, white);
 	broadcast_event(question_asked, N);
-	
+
+	//Wait for all commentators to decide if they will answer
 	wait_event(all_decided);
 
+	//Iterate over all of the commentators who want to answer the question
 	int commentator_id;
-	
 	while((commentator_id = queue_pop(queue))!=-1){
+		//Check breaking news
 		if(atomic_get(is_breaking_news))
 			wait_event(breaking_news_end);
 		
 		atomic_set(turn, commentator_id);
 		wait_event(commentator_done);
 	}
+	
+	//Check breaking news
 	if (atomic_get(is_breaking_news))
 		wait_event(breaking_news_end);
 
+	//Reset turn and num_decided variables for next round
 	atomic_set(num_decided, 0);
 	atomic_set(turn, -1);
 
