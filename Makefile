@@ -4,4 +4,4 @@ start: main.c
 	gcc -o main -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast main.c -lpthread
 
 run: main
-	./main -n 5 -p 0.5 -q 100 -t 2 -b 0.1
+	./main -n 4 -p 0.75 -q 5 -t 3 -b 0.05

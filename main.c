@@ -21,25 +21,23 @@ int N, Q, T;
 float P, B; 
 
 // Color codes.
-char boldRed[20] = "\033[1m\033[31m";
-char boldGreen[20] = "\033[1m\033[32m";
-char boldCyan[20] = "\033[1m\033[36m";
-char boldBlue[20] = "\033[1m\033[34m";
-char white[20] = "\033[m\033[1m\033[37m";
-char boldYellow[20] = "\033[7m\033[1m\033[33m";
+char boldRed[20] 	= 	"\033[1m\033[31m";
+char boldGreen[20] 	= 	"\033[1m\033[32m";
+char boldCyan[20] 	= 	"\033[1m\033[36m";
+char boldBlue[20] 	= 	"\033[1m\033[34m";
+char white[20] 		= 	"\033[m\033[1m\033[37m";
+char boldYellow[20]	= 	"\033[7m\033[1m\033[33m";
 
-// Creating function prototypes.
 void commentator_main(void *id_);
 void commentator_round(void *id_);
 void moderator_main();
 void moderator_round();
 void news_reporter_main();
 
-//Global queue, initialized in main().
+//Global queue, initialized in main()
 queue_t *queue;
 
-//Global events.
-event_t *all_ready;
+//Global events
 event_t *all_decided;
 event_t *question_asked;
 event_t *commentator_done;
@@ -47,10 +45,9 @@ event_t *next_round;
 event_t *breaking_news_start;
 event_t *breaking_news_end;
 
-//Atomic ints.
+//Atomic ints
 atomic_t *turn;
 atomic_t *num_decided;
-atomic_t *num_ready;
 atomic_t *is_breaking_news;
 
 bool is_last_round = false;
@@ -58,13 +55,11 @@ bool is_last_round = false;
 int main(int argc, char *argv[])
 {
 	// Validating the input.
-	if (!validate_program_parameters(argc, argv)) return -1;
+	if (!validate_program_parameters(argc, argv))
+		return -1;
 
-	// Initilizing queue structure.
 	queue_init(&queue, N);
 	
-	// Initilizing event structs.
-	event_init(&all_ready);
 	event_init(&all_decided);
 	event_init(&question_asked);
 	event_init(&commentator_done);
@@ -72,19 +67,15 @@ int main(int argc, char *argv[])
 	event_init(&breaking_news_start);
 	event_init(&breaking_news_end);
 
-	// Initilizing atomic_t structs.
 	atomic_init(&turn);
 	atomic_set(turn, -1);
 	atomic_init(&num_decided);
-	atomic_init(&num_ready);
 	atomic_init(&is_breaking_news);
 
-	// Declaring pthreads for the further use.
 	pthread_t commentators[N];
 	pthread_t moderator;
 	pthread_t news_reporter;
 
-	// Creating pthreads and numbering them.
 	for (int i = 0; i < N; i++)
 	{
 		pthread_create(&commentators[i], NULL, (void *) commentator_main, (void *) i);
@@ -92,7 +83,6 @@ int main(int argc, char *argv[])
 	pthread_create(&moderator, NULL, (void *) moderator_main, NULL);
 	pthread_create(&news_reporter, NULL, (void *) news_reporter_main, NULL);
 
-	// While loop for creating breaking news mechanism.
 	while(!is_last_round){
 		pthread_sleep(1);
 		if(roll_dice(B)){
@@ -101,14 +91,31 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	return 0;
+  for(int i=0;i<N; i++)
+    pthread_join(commentators[i], NULL);
+    
+  pthread_join(moderator, NULL);
+
+  queue_free(queue);
+  
+  free(all_decided);
+	free(question_asked);
+	free(commentator_done);
+  free(next_round);
+	free(breaking_news_start);
+	free(breaking_news_end);
+	free(turn);
+	free(num_decided);
+	free(is_breaking_news);
+
+  printf("%s", white);
+
+  exit(0);
 }
 
-
-// Method for notifying program if a breaking news occurs.
 void news_reporter_main(){
 	while(!is_last_round){
-		wait_event(breaking_news_start);
+    wait_event(breaking_news_start);
 		atomic_set(is_breaking_news, 1);
 		tprintf(" %sBreaking news!%s\n", boldYellow, white);
 		pthread_sleep(5);
@@ -122,16 +129,10 @@ void commentator_round(void *id_)
 {
 	int id = (int) id_;
 	
-	// Incrementing num_ready atomically to prevent accesing the same data by multiple threads.
-	atomic_increment(num_ready);
-	
-	// Waiting until question_asked event to occur.
 	wait_event(question_asked);
 
-	// Getting probability to produce an answer by commentators.
 	bool will_answer = roll_dice(P);
 	
-	// Printing the answer if specific commentator is going to answer the question.
 	if(will_answer){
 		//queue_push() operation is secured with lock. The lock is implemented in the function
 		//queue_push also prints that commentator generates an answer
@@ -140,9 +141,11 @@ void commentator_round(void *id_)
 	}
 	
 	atomic_increment(num_decided);
+	//If all of the commentators decided, signal moderator
 	atomic_cond_signal_event(num_decided, N, all_decided);
 
 	if(will_answer){
+		//Wait for the turn
 		while(atomic_get(turn)!=id);
 		
 		long sleep_amount = uniform_random(1000, T*1000);
@@ -162,30 +165,36 @@ void commentator_round(void *id_)
 
 void moderator_round(int round_num)
 {	
-	while(atomic_get(num_ready)!=N);
-    
+	//Check breaking news
+	if (atomic_get(is_breaking_news))
+		wait_event(breaking_news_end);
+	
 	tprintf(" %sModerator asked the question %d!%s\n", boldRed, round_num, white);
 	broadcast_event(question_asked, N);
-	
+
+	//Wait for all commentators to decide if they will answer
 	wait_event(all_decided);
 
+	//Iterate over all of the commentators who want to answer the question
 	int commentator_id;
-	
 	while((commentator_id = queue_pop(queue))!=-1){
+		//Check breaking news
 		if(atomic_get(is_breaking_news))
 			wait_event(breaking_news_end);
+		
 		atomic_set(turn, commentator_id);
 		wait_event(commentator_done);
 	}
+	
+	//Check breaking news
 	if (atomic_get(is_breaking_news))
 		wait_event(breaking_news_end);
 
+	//Reset turn and num_decided variables for next round
 	atomic_set(num_decided, 0);
-	atomic_set(num_ready, 0);
 	atomic_set(turn, -1);
 
 	tprintf(" %sEnd of the round %d.%s\n", boldBlue, round_num, white);
-	broadcast_event(next_round, N);
 }
 
 void moderator_main(){
@@ -193,10 +202,9 @@ void moderator_main(){
 		moderator_round(i+1);
 		if(i+1==Q) 
 			is_last_round = true;
+    broadcast_event(next_round, N);
 	}
 	tprintf(" %sEnd of the game.\n", boldBlue);
-
-	exit(0);
 }
 
 void commentator_main(void *id_){

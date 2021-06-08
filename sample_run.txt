@@ -1,0 +1,60 @@
+gcc -o main -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast main.c -lpthread
+./main -n 4 -p 0.75 -q 5 -t 3 -b 0.05
+[03:12:28:088] Moderator asked the question 1!
+[03:12:28:089] Commentator #0 generates an answer. Position in queue: 0!
+[03:12:28:089] Commentator #2 generates an answer. Position in queue: 2!
+[03:12:28:089] Commentator #3 generates an answer. Position in queue: 1!
+[03:12:28:089] Commentator #0’s turn to speak for 2.658 seconds!
+[03:12:30:752] Commentator #0 finished speaking.
+[03:12:30:752] Commentator #3’s turn to speak for 2.544 seconds!
+[03:12:33:296] Commentator #3 finished speaking.
+[03:12:33:296] Commentator #2’s turn to speak for 1.440 seconds!
+[03:12:34:737] Commentator #2 finished speaking.
+[03:12:34:737] End of the round 1.
+[03:12:34:737] Moderator asked the question 2!
+[03:12:34:737] Commentator #3 generates an answer. Position in queue: 1!
+[03:12:34:737] Commentator #1 generates an answer. Position in queue: 2!
+[03:12:34:737] Commentator #0 generates an answer. Position in queue: 0!
+[03:12:34:737] Commentator #0’s turn to speak for 1.327 seconds!
+[03:12:35:102] Breaking news!
+[03:12:35:102] Commentator #0 is cut short due to breaking news.
+[03:12:40:105] Breaking news ends!
+[03:12:40:106] Commentator #3’s turn to speak for 1.840 seconds!
+[03:12:41:946] Commentator #3 finished speaking.
+[03:12:41:946] Commentator #1’s turn to speak for 1.303 seconds!
+[03:12:43:254] Commentator #1 finished speaking.
+[03:12:43:254] End of the round 2.
+[03:12:43:254] Moderator asked the question 3!
+[03:12:43:254] Commentator #3 generates an answer. Position in queue: 0!
+[03:12:43:254] Commentator #2 generates an answer. Position in queue: 1!
+[03:12:43:254] Commentator #3’s turn to speak for 1.278 seconds!
+[03:12:44:537] Commentator #3 finished speaking.
+[03:12:44:537] Commentator #2’s turn to speak for 2.335 seconds!
+[03:12:46:874] Commentator #2 finished speaking.
+[03:12:46:874] End of the round 3.
+[03:12:46:874] Moderator asked the question 4!
+[03:12:46:874] Commentator #3 generates an answer. Position in queue: 0!
+[03:12:46:874] Commentator #1 generates an answer. Position in queue: 2!
+[03:12:46:874] Commentator #2 generates an answer. Position in queue: 1!
+[03:12:46:874] Commentator #0 generates an answer. Position in queue: 3!
+[03:12:46:875] Commentator #3’s turn to speak for 1.979 seconds!
+[03:12:48:854] Commentator #3 finished speaking.
+[03:12:48:854] Commentator #2’s turn to speak for 1.821 seconds!
+[03:12:50:679] Commentator #2 finished speaking.
+[03:12:50:679] Commentator #1’s turn to speak for 2.393 seconds!
+[03:12:53:072] Commentator #1 finished speaking.
+[03:12:53:072] Commentator #0’s turn to speak for 2.745 seconds!
+[03:12:55:818] Commentator #0 finished speaking.
+[03:12:55:818] End of the round 4.
+[03:12:55:818] Moderator asked the question 5!
+[03:12:55:818] Commentator #1 generates an answer. Position in queue: 0!
+[03:12:55:818] Commentator #2 generates an answer. Position in queue: 1!
+[03:12:55:818] Commentator #0 generates an answer. Position in queue: 2!
+[03:12:55:819] Commentator #1’s turn to speak for 2.944 seconds!
+[03:12:58:765] Commentator #1 finished speaking.
+[03:12:58:765] Commentator #2’s turn to speak for 1.196 seconds!
+[03:12:59:966] Commentator #2 finished speaking.
+[03:12:59:966] Commentator #0’s turn to speak for 1.903 seconds!
+[03:13:01:870] Commentator #0 finished speaking.
+[03:13:01:870] End of the round 5.
+[03:13:01:870] End of the game.
