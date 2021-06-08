@@ -90,12 +90,32 @@ int main(int argc, char *argv[])
 			wait_event(breaking_news_end);
 		}
 	}
-	exit(0);
+
+  for(int i=0;i<N; i++)
+    pthread_join(commentators[i], NULL);
+    
+  pthread_join(moderator, NULL);
+
+  queue_free(queue);
+  
+  free(all_decided);
+	free(question_asked);
+	free(commentator_done);
+  free(next_round);
+	free(breaking_news_start);
+	free(breaking_news_end);
+	free(turn);
+	free(num_decided);
+	free(is_breaking_news);
+
+  printf("%s", white);
+
+  exit(0);
 }
 
 void news_reporter_main(){
 	while(!is_last_round){
-		wait_event(breaking_news_start);
+    wait_event(breaking_news_start);
 		atomic_set(is_breaking_news, 1);
 		tprintf(" %sBreaking news!%s\n", boldYellow, white);
 		pthread_sleep(5);
@@ -119,7 +139,6 @@ void commentator_round(void *id_)
 		int size = queue_push(queue, id);
 		tprintf(" %sCommentator #%d generates an answer. Position in queue: %d!%s\n", boldGreen, id,  size-1, white);
 	}
-	
 	
 	atomic_increment(num_decided);
 	//If all of the commentators decided, signal moderator
@@ -176,7 +195,6 @@ void moderator_round(int round_num)
 	atomic_set(turn, -1);
 
 	tprintf(" %sEnd of the round %d.%s\n", boldBlue, round_num, white);
-	broadcast_event(next_round, N);
 }
 
 void moderator_main(){
@@ -184,6 +202,7 @@ void moderator_main(){
 		moderator_round(i+1);
 		if(i+1==Q) 
 			is_last_round = true;
+    broadcast_event(next_round, N);
 	}
 	tprintf(" %sEnd of the game.\n", boldBlue);
 }
